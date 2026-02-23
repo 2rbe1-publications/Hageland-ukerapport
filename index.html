@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hageland – Daglig salgsrapport</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.8.0/Recharts.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Georgia, serif; background: #f4f6f0; color: #1b3a2d; }
+    button { cursor: pointer; font-family: inherit; }
+    table { border-collapse: collapse; width: 100%; }
+
+    .header {
+      background: linear-gradient(120deg, #1b3a2d 0%, #2d5a3d 100%);
+      color: #fff;
+      padding: 24px 36px 0;
+    }
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .header h1 { font-size: 28px; font-weight: 400; }
+    .header-sub { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; opacity: 0.6; margin-bottom: 4px; }
+    .header-date { font-size: 12px; opacity: 0.6; margin-top: 4px; text-transform: capitalize; }
+    .header-right { text-align: right; }
+    .header-right .big { font-size: 24px; font-weight: 800; }
+    .header-right .small { font-size: 12px; opacity: 0.6; }
+    .header-right .neg { font-size: 12px; color: #ffb3b3; }
+
+    .tabs { display: flex; gap: 6px; overflow-x: auto; }
+    .tab {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: #fff;
+      border-radius: 8px 8px 0 0;
+      padding: 8px 18px;
+      font-size: 12px;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .tab.active {
+      background: rgba(255,255,255,0.22);
+      border-color: rgba(255,255,255,0.45);
+      padding-bottom: 9px;
+      margin-bottom: -1px;
+    }
+
+    .content { padding: 24px 36px; }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 12px; margin-bottom: 20px; }
+    @media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+
+    .kpi-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 16px 14px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    }
+    .kpi-label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: #6b7c6b; margin-bottom: 6px; }
+    .kpi-value { font-size: 20px; font-weight: 800; color: #1b3a2d; }
+    .kpi-change { font-size: 12px; font-weight: 600; margin-top: 3px; }
+    .up { color: #3a7d5a; }
+    .dn { color: #e63946; }
+
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+    .card h4 { font-size: 13px; color: #1b3a2d; margin-bottom: 14px; }
+
+    .two-col { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+    .compare-grid { display: grid; gap: 16px; }
+    .compare-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 0; }
+    @media (max-width: 900px) { .compare-charts { grid-template-columns: 1fr; } }
+
+    th, td { padding: 6px 10px; }
+    th { font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; color: #6b7c6b; font-weight: 700; text-align: right; border-bottom: 2px solid #dce8dc; }
+    th:first-child { text-align: left; }
+    td { font-size: 12px; text-align: right; border-bottom: 1px solid #dce8dc; }
+    td:first-child { text-align: left; }
+    tr:nth-child(even) td { background: #fafcfa; }
+    .avg-row td { background: #f0f8f2 !important; font-weight: 700; color: #3a7d5a; border-top: 2px solid #dce8dc; }
+
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+
+    .bar-bg { background: #f0f4f0; border-radius: 4px; height: 6px; overflow: hidden; flex: 1; }
+    .bar-fill { height: 100%; border-radius: 4px; }
+
+    .footer { text-align: center; padding: 8px 0 20px; font-size: 10px; color: #6b7c6b; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+const { createElement: h, useState, Fragment } = React;
+const {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, Cell
+} = Recharts;
+
+// ── Data ──────────────────────────────────────────────────────────────────────
+const STORE_COLORS = {
+  Kolsås:   "#2d6a4f",
+  Åssiden:  "#52b788",
+  Notodden: "#d4a017",
+  Sande:    "#e76f51",
+  Horten:   "#457b9d",
+};
+
+const STORES = {
+  Kolsås: {
+    salg: 98975, salgPct: -13.4, db: 48.0, dbDiff: -8.0,
+    kunder: 268, kunderPct: -21.6, krKunde: 376, krKundeDiff: 36,
+    kampanje: 10613, kampanjePct: 10.7,
+    varegrupper: [
+      { name: "Inneplanter", salg: 20305, db: 42.9 },
+      { name: "Frø og løk",  salg: 12711, db: 57.1 },
+      { name: "Dekor",       salg: 9713,  db: 56.1 },
+      { name: "Pet",         salg: 8353,  db: 60.6 },
+      { name: "Hageredskap", salg: 8074,  db: 55.2 },
+      { name: "Snittblomst", salg: 7380,  db: 45.5 },
+    ],
+    radar: [78, 77, 38, 62, 82],
+  },
+  Åssiden: {
+    salg: 66765, salgPct: -48.0, db: 54.7, dbDiff: -1.0,
+    kunder: 275, kunderPct: -24.5, krKunde: 250, krKundeDiff: -110,
+    kampanje: 10281, kampanjePct: 15.4,
+    varegrupper: [
+      { name: "Inneplanter", salg: 18557, db: 49.5 },
+      { name: "Pet",         salg: 8542,  db: 48.4 },
+      { name: "Snittblomst", salg: 7384,  db: 47.3 },
+      { name: "Dekor",       salg: 5807,  db: 65.1 },
+      { name: "Jord/gjødsel",salg: 5316,  db: 77.3 },
+      { name: "Frø og løk",  salg: 4772,  db: 56.8 },
+    ],
+    radar: [30, 80, 42, 68, 55],
+  },
+  Notodden: {
+    salg: 53981, salgPct: -21.8, db: 55.2, dbDiff: 4.6,
+    kunder: 217, kunderPct: -7.3, krKunde: 256, krKundeDiff: -46,
+    kampanje: 6996, kampanjePct: 13.0,
+    varegrupper: [
+      { name: "Inneplanter", salg: 16644, db: 55.9 },
+      { name: "Jord/gjødsel",salg: 7018,  db: 73.5 },
+      { name: "Pet",         salg: 6436,  db: 40.8 },
+      { name: "Frø og løk",  salg: 4418,  db: 58.3 },
+      { name: "Hageredskap", salg: 4394,  db: 61.2 },
+      { name: "Dekor",       salg: 4391,  db: 57.3 },
+    ],
+    radar: [56, 82, 60, 58, 65],
+  },
+  Sande: {
+    salg: 101816, salgPct: -13.2, db: 50.4, dbDiff: -3.4,
+    kunder: 374, kunderPct: -12.0, krKunde: 280, krKundeDiff: -2,
+    kampanje: 10393, kampanjePct: 10.2,
+    varegrupper: [
+      { name: "Pet",         salg: 21386, db: 40.6 },
+      { name: "Inneplanter", salg: 20095, db: 59.0 },
+      { name: "Snittblomst", salg: 17181, db: 53.8 },
+      { name: "Mat",         salg: 9484,  db: 44.4 },
+      { name: "Dekor",       salg: 6876,  db: 57.5 },
+      { name: "Innepotter",  salg: 4947,  db: 60.4 },
+    ],
+    radar: [66, 75, 65, 62, 72],
+  },
+  Horten: {
+    salg: 80343, salgPct: -11.0, db: 52.1, dbDiff: -3.0,
+    kunder: 337, kunderPct: -8.7, krKunde: 248, krKundeDiff: -3,
+    kampanje: 17120, kampanjePct: 21.3,
+    varegrupper: [
+      { name: "Inneplanter", salg: 19960, db: 49.2 },
+      { name: "Snittblomst", salg: 10608, db: 47.9 },
+      { name: "Pet",         salg: 9033,  db: 43.5 },
+      { name: "Frø og løk",  salg: 8697,  db: 56.7 },
+      { name: "Dekor",       salg: 7137,  db: 54.6 },
+      { name: "Jord/gjødsel",salg: 7081,  db: 77.7 },
+    ],
+    radar: [70, 78, 62, 72, 68],
+  },
+};
+
+const STORE_NAMES = Object.keys(STORES);
+const RADAR_AXES = ["Salg-trend", "DB %", "Kunder", "Kampanje", "Kr/kunde"];
+const fmt = n => n.toLocaleString("nb-NO");
+
+// ── Components ────────────────────────────────────────────────────────────────
+function Arrow({ val }) {
+  const pos = val >= 0;
+  return h('span', { className: pos ? 'up' : 'dn' },
+    (pos ? '▲ ' : '▼ ') + Math.abs(val).toFixed(1) + '%'
+  );
+}
+
+function CustomTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  return h('div', {
+    style: { background:'#fff', border:'1.5px solid #3a7d5a', borderRadius:8, padding:'10px 14px', fontSize:12 }
+  },
+    h('p', { style:{margin:0,fontWeight:700,color:'#1b3a2d'} }, label),
+    payload.map((p, i) => h('p', { key:i, style:{margin:'2px 0',color:'#1b3a2d'} },
+      p.name + ': ', h('b', null, typeof p.value === 'number' ? fmt(p.value) : p.value)
+    ))
+  );
+}
+
+function KpiCard({ label, value, change, isUp }) {
+  return h('div', { className:'kpi-card', style:{borderTop:`3px solid ${isUp?'#3a7d5a':'#e63946'}`} },
+    h('div', { className:'kpi-label' }, label),
+    h('div', { className:'kpi-value' }, value),
+    h('div', { className:`kpi-change ${isUp?'up':'dn'}` }, (isUp?'▲ ':'▼ ') + change)
+  );
+}
+
+function StoreView({ name }) {
+  const d = STORES[name];
+  const color = STORE_COLORS[name];
+  const radarData = RADAR_AXES.map((s, i) => ({ subject: s, A: d.radar[i] }));
+
+  return h(Fragment, null,
+    h('div', { className:'kpi-grid' },
+      h(KpiCard, { label:'Salg', value:`${fmt(d.salg)} kr`,
+        change:`${Math.abs(d.salgPct).toFixed(1)}%`, isUp:d.salgPct>=0 }),
+      h(KpiCard, { label:'DB %', value:`${d.db}%`,
+        change:`${Math.abs(d.dbDiff).toFixed(1)} pp`, isUp:d.dbDiff>=0 }),
+      h(KpiCard, { label:'Kunder', value:fmt(d.kunder),
+        change:`${Math.abs(d.kunderPct).toFixed(1)}%`, isUp:d.kunderPct>=0 }),
+      h(KpiCard, { label:'Kr / kunde', value:`${fmt(d.krKunde)} kr`,
+        change:`${Math.abs(d.krKundeDiff)} kr`, isUp:d.krKundeDiff>=0 }),
+      h(KpiCard, { label:'Kampanje', value:`${fmt(d.kampanje)} kr`,
+        change:`${d.kampanjePct}% av total`, isUp:true })
+    ),
+    h('div', { className:'two-col' },
+      h('div', { className:'card' },
+        h('h4', null, 'Salg per varegruppe (kr)'),
+        h(ResponsiveContainer, { width:'100%', height:220 },
+          h(BarChart, { data:d.varegrupper, margin:{bottom:40} },
+            h(CartesianGrid, { strokeDasharray:'3 3', stroke:'#f0f4f0' }),
+            h(XAxis, { dataKey:'name', tick:{fontSize:10}, angle:-30, textAnchor:'end', interval:0 }),
+            h(YAxis, { tick:{fontSize:10} }),
+            h(Tooltip, { content: h(CustomTooltip) }),
+            h(Bar, { dataKey:'salg', name:'Salg (kr)', fill:color, radius:[5,5,0,0] })
+          )
+        )
+      ),
+      h('div', { className:'card' },
+        h('h4', null, 'Ytelsesradar'),
+        h(ResponsiveContainer, { width:'100%', height:190 },
+          h(RadarChart, { data:radarData },
+            h(PolarGrid, { stroke:'#e0ece0' }),
+            h(PolarAngleAxis, { dataKey:'subject', tick:{fontSize:10,fill:'#555'} }),
+            h(Radar, { dataKey:'A', stroke:color, fill:color, fillOpacity:0.25 })
+          )
+        ),
+        h('div', { style:{marginTop:8} },
+          d.varegrupper.slice(0,4).map((v, i) =>
+            h('div', { key:i, style:{display:'flex',alignItems:'center',gap:8,marginBottom:4} },
+              h('div', { style:{width:80,fontSize:10,color:'#6b7c6b',flexShrink:0} }, v.name),
+              h('div', { className:'bar-bg' },
+                h('div', { className:'bar-fill',
+                  style:{width:`${Math.max(0,v.db)}%`, background:v.db>60?'#3a7d5a':'#74c69d'} })
+              ),
+              h('div', { style:{width:38,fontSize:11,fontWeight:700,textAlign:'right',
+                color:v.db>50?'#3a7d5a':'#e63946'} }, v.db + '%')
+            )
+          )
+        )
+      )
+    )
+  );
+}
+
+function CompareView() {
+  const salgsData = STORE_NAMES.map(n => ({ name:n, salg:STORES[n].salg }));
+  const trendData = STORE_NAMES.map(n => ({ name:n, "Salg %": STORES[n].salgPct }));
+
+  return h('div', { className:'compare-grid' },
+    h('div', { className:'card' },
+      h('h4', null, 'Sammenligning – alle butikker uke 8, 2026'),
+      h('div', { style:{overflowX:'auto'} },
+        h('table', null,
+          h('thead', null,
+            h('tr', null,
+              ['Butikk','Salg','Salg +/-','DB %','DB +/-','Kunder','Kunder +/-','Kr/kunde','Kampanje'].map(col =>
+                h('th', { key:col }, col)
+              )
+            )
+          ),
+          h('tbody', null,
+            STORE_NAMES.map((n, i) => {
+              const d = STORES[n];
+              return h('tr', { key:n },
+                h('td', null, h('span', { className:'dot', style:{background:STORE_COLORS[n]} }), h('b', null, n)),
+                h('td', null, fmt(d.salg)),
+                h('td', null, h(Arrow, { val:d.salgPct })),
+                h('td', null, h('b', null, d.db + '%')),
+                h('td', null, h(Arrow, { val:d.dbDiff })),
+                h('td', null, fmt(d.kunder)),
+                h('td', null, h(Arrow, { val:d.kunderPct })),
+                h('td', null, d.krKunde + ' kr'),
+                h('td', null, d.kampanjePct + '%'),
+              );
+            }),
+            h('tr', { key:'avg', className:'avg-row' },
+              h('td', null, 'Snitt'),
+              h('td', null, fmt(Math.round(STORE_NAMES.reduce((s,n)=>s+STORES[n].salg,0)/STORE_NAMES.length))),
+              h('td', { colSpan:7 })
+            )
+          )
+        )
+      )
+    ),
+    h('div', { className:'compare-charts' },
+      h('div', { className:'card' },
+        h('h4', null, 'Salg sammenligning (kr)'),
+        h(ResponsiveContainer, { width:'100%', height:220 },
+          h(BarChart, { data:salgsData },
+            h(CartesianGrid, { strokeDasharray:'3 3', stroke:'#f0f4f0' }),
+            h(XAxis, { dataKey:'name', tick:{fontSize:11} }),
+            h(YAxis, { tick:{fontSize:10}, tickFormatter:v=>`${(v/1000).toFixed(0)}k` }),
+            h(Tooltip, { content: h(CustomTooltip) }),
+            h(Bar, { dataKey:'salg', name:'Salg (kr)', radius:[6,6,0,0] },
+              salgsData.map((e,i) => h(Cell, { key:i, fill:STORE_COLORS[e.name] }))
+            )
+          )
+        )
+      ),
+      h('div', { className:'card' },
+        h('h4', null, 'Salgsendring vs. fjoråret (%)'),
+        h(ResponsiveContainer, { width:'100%', height:220 },
+          h(BarChart, { data:trendData, layout:'vertical' },
+            h(CartesianGrid, { strokeDasharray:'3 3', stroke:'#f0f4f0', horizontal:false }),
+            h(XAxis, { type:'number', tick:{fontSize:10}, unit:'%' }),
+            h(YAxis, { type:'category', dataKey:'name', tick:{fontSize:11}, width:70 }),
+            h(Tooltip, { content: h(CustomTooltip) }),
+            h(Bar, { dataKey:'Salg %', radius:[0,4,4,0] },
+              trendData.map((e,i) => h(Cell, { key:i, fill: e['Salg %']>=0 ? '#3a7d5a' : '#e63946' }))
+            )
+          )
+        )
+      )
+    )
+  );
+}
+
+function App() {
+  const [active, setActive] = useState('Sammenligning');
+  const tabs = ['Sammenligning', ...STORE_NAMES];
+  const today = new Date().toLocaleDateString('nb-NO', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+  return h('div', null,
+    h('div', { className:'header' },
+      h('div', { className:'header-top' },
+        h('div', null,
+          h('div', { className:'header-sub' }, 'Hageland · Daglig salgsrapport'),
+          h('h1', null, 'Butikkoversikt'),
+          h('div', { className:'header-date' }, today + ' · Uke 8, 2026')
+        ),
+        h('div', { className:'header-right' },
+          h('div', { className:'small' }, 'Kjedeomsetning'),
+          h('div', { className:'big' }, '7 598 484 kr'),
+          h('div', { className:'neg' }, '▼ 11,5% vs. fjoråret')
+        )
+      ),
+      h('div', { className:'tabs' },
+        tabs.map(t => h('button', {
+          key: t,
+          className: 'tab' + (active===t ? ' active' : ''),
+          style: t !== 'Sammenligning' ? { borderLeft:`3px solid ${STORE_COLORS[t]}` } : {},
+          onClick: () => setActive(t)
+        }, t))
+      )
+    ),
+    h('div', { className:'content' },
+      active === 'Sammenligning' ? h(CompareView) : h(StoreView, { name:active })
+    ),
+    h('div', { className:'footer' }, 'Kilde: Hageland Seebrite · Oppdateres ukentlig')
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script>
+</body>
+</html>
